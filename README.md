@@ -3,8 +3,6 @@ This project uses a simple LSTM-based model to generate melodies over chord prog
 
 ![Image](auto-music-.jpg)
 
-In this project, we pass in a series of chords to the model and it predicts a melody that sounds musically coherent
-
 ## Install Dependencies
 ```
 pip install -r requirements.txt
