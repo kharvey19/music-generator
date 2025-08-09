@@ -37,6 +37,9 @@ python run_app.py
 6. **Sheet Music**: Use “Show Sheet Music” to render notation. Use “Download Image” to save the page as PNG.
 7. **Analyze Melody**: Get concise AI tips on harmony, contour, and improvements.
 
+## Results
+The melody will be generated in real-time and displayed as note names. You can also download it as a MIDI file titled `generated_melody.mid`.
+
 ![Image](static/UI.png)
 
 
