@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Melody Generator</title>
+    <!-- Tone.js + MIDI parser for audio playback -->
+    <script src="https://unpkg.com/tone@latest/build/Tone.js"></script>
+    <script src="https://unpkg.com/@tonejs/midi@latest/build/Midi.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0a0a;
+            min-height: 100vh;
+            padding: 20px;
+            color: #ffffff;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #0a0a0a;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: #1a1a1a;
+            color: #ffffff;
+            padding: 40px 30px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+        }
+
+        .left-section {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .right-section {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .section {
+            background: #1a1a1a;
+            padding: 30px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .section h3 {
+            color: #ffffff;
+            margin-bottom: 15px;
+            font-size: 1.4rem;
+            font-weight: 600;
+            text-align: center;
+            border-bottom: 2px solid rgba(110, 172, 218, 0.6);
+            padding-bottom: 10px;
+        }
+
+        .chord-selection {
+            margin-bottom: 20px;
+        }
+
+        .chord-input-container {
+            position: relative;
+            margin-bottom: 15px;
+        }
+
+        .chord-input {
+            width: 100%;
+            padding: 18px 20px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            font-size: 1rem;
+            background: #0a0a0a;
+            color: #ffffff;
+            transition: border-color 0.3s ease;
+        }
+
+        .chord-input:focus {
+            outline: none;
+            border-color: #6eacda;
+            background: #2d2d2d;
+        }
+
+        .chord-input::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
+
+        .chord-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #0a0a0a;
+            border: 2px solid #6eacda;
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+
+        .chord-dropdown.show {
+            display: block;
+        }
+
+        .chord-option {
+            padding: 12px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            transition: background-color 0.2s ease;
+            color: #ffffff;
+        }
+
+        .chord-option:hover {
+            background-color: #1a1a1a;
+        }
+
+        .chord-option:last-child {
+            border-bottom: none;
+        }
+
+        .chord-option.selected {
+            background-color: #6eacda;
+            color: #ffffff;
+        }
+
+        .selected-chords {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .selected-chord-tag {
+            background: #6eacda;
+            color: #ffffff;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .selected-chord-tag:hover {
+            background: #7bb8e8;
+        }
+
+        .remove-chord {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: #ffffff;
+            border-radius: 4px;
+            width: 22px;
+            height: 22px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+
+        .remove-chord:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .no-results {
+            padding: 15px;
+            text-align: center;
+            color: #6eacda;
+            font-style: italic;
+        }
+
+        .duration-control {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+
+        .duration-control label {
+            font-weight: 500;
+            color: #ffffff;
+        }
+
+        .duration-control input {
+            width: 120px;
+            padding: 12px 16px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            font-size: 1rem;
+            background: #0a0a0a;
+            color: #ffffff;
+            transition: border-color 0.3s ease;
+        }
+
+        .duration-control input:focus {
+            outline: none;
+            border-color: #6eacda;
+            background: #2d2d2d;
+        }
+
+        .generate-section {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 16px 32px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            border: 2px solid transparent;
+        }
+
+        .btn-primary {
+            background: #6eacda;
+            color: #ffffff;
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .btn-primary:hover {
+            background: #7bb8e8;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+            border-color: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border-color: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(220, 53, 69, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            border-color: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(108, 117, 125, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .melody-display {
+            background: #021526;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 20px;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #6eacda;
+        }
+
+        .melody-display.empty {
+            color: #6eacda;
+            font-style: italic;
+        }
+
+        .melody-notes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .note {
+            background: #6eacda;
+            color: #021526;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            border: 1px solid #e2e2b6;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .status.success {
+            background: #155724;
+            color: #d4edda;
+            border: 1px solid #28a745;
+        }
+
+        .status.error {
+            background: #721c24;
+            color: #f8d7da;
+            border: 1px solid #dc3545;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: #6eacda;
+            font-weight: 500;
+        }
+
+        .spinner {
+            border: 3px solid #03346e;
+            border-top: 3px solid #6eacda;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        .audio-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 20px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .instrument-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .instrument-selector label {
+            font-weight: 500;
+            color: #ffffff;
+            white-space: nowrap;
+        }
+
+        .instrument-selector select {
+            padding: 8px 12px;
+            border: 2px solid #6eacda;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            background: #021526;
+            color: #ffffff;
+            cursor: pointer;
+        }
+
+        .instrument-selector select:focus {
+            outline: none;
+            border-color: #ffffff;
+            background: #03346e;
+        }
+
+        .audio-settings {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .setting-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .setting-group label {
+            font-size: 0.9rem;
+            color: #ffffff;
+            white-space: nowrap;
+        }
+
+        .setting-group input[type="range"] {
+            width: 80px;
+        }
+
+        .setting-group input[type="number"] {
+            width: 60px;
+            padding: 4px 8px;
+            border: 1px solid #6eacda;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            background: #021526;
+            color: #ffffff;
+        }
+
+        .playback-info {
+            text-align: center;
+            margin-top: 15px;
+            color: #6eacda;
+            font-size: 0.9rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .melody-display {
+            background: #0a0a0a;
+            border-radius: 6px;
+            padding: 25px;
+            margin-bottom: 20px;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 
+                inset 0 2px 4px rgba(0,0,0,0.3),
+                0 0 0 1px rgba(255,255,255,0.05);
+        }
+
+        .melody-display.empty {
+            color: rgba(255,255,255,0.6);
+            font-style: italic;
+        }
+
+        .music-analysis {
+            background: #1a1a1a;
+            border-radius: 6px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 
+                inset 0 2px 4px rgba(0,0,0,0.3),
+                0 0 0 1px rgba(255,255,255,0.05);
+        }
+
+        .music-analysis h4 {
+            color: #ffffff;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .analysis-content {
+            color: #ffffff;
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        .analysis-loading {
+            color: #6eacda;
+            font-style: italic;
+            text-align: center;
+        }
+
+        .analyze-btn {
+            background: #6eacda;
+            color: #ffffff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 15px;
+        }
+
+        .analyze-btn:hover {
+            background: #7bb8e8;
+        }
+
+        .analyze-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .note {
+            background: #6eacda;
+            color: #ffffff;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            border: 1px solid rgba(255,255,255,0.2);
+            box-shadow: 
+                0 2px 8px rgba(110, 172, 218, 0.3),
+                0 0 0 1px rgba(255,255,255,0.1);
+            transition: all 0.3s ease;
+        }
+
+        .note:hover {
+            transform: translateY(-2px);
+            box-shadow: 
+                0 4px 12px rgba(110, 172, 218,0.4),
+                0 0 0 1px rgba(255,255,255,0.2);
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+                padding: 20px;
+            }
+            
+            .container {
+                margin: 10px;
+                border-radius: 6px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .chord-input {
+                font-size: 16px; /* Prevents zoom on iOS */
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+            
+            .audio-controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .selected-chords {
+                justify-content: center;
+            }
+            
+            .audio-settings {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .setting-group {
+                flex-direction: column;
+                align-items: center;
+                gap: 5px;
+            }
+            
+            .instrument-selector {
+                flex-direction: column;
+                align-items: center;
+                gap: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>AI Melody Generator</h1>
+            <p>Create melodies from chord progressions using machine learning</p>
+        </div>
+        
+        <div class="content">
+            <div class="left-section">
+                <div class="section">
+                    <h3>Select Your Chords</h3>
+                    <div class="chord-selection">
+                        <div class="chord-input-container">
+                            <input type="text" id="chordInput" class="chord-input" placeholder="Type to search chords...">
+                            <div class="chord-dropdown" id="chordDropdown"></div>
+                        </div>
+                        <div class="selected-chords" id="selectedChordsDisplay">
+                            <!-- Selected chords will be displayed here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3>Set Duration</h3>
+                    <div class="duration-control">
+                        <label for="duration">Duration per chord (seconds):</label>
+                        <input type="number" id="duration" value="0.5" min="0.1" max="2.0" step="0.1">
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <button class="btn btn-primary" id="generateBtn">Generate Melody</button>
+                </div>
+                
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Generating your melody...</p>
+                </div>
+                
+                <div class="status" id="status"></div>
+            </div>
+            
+            <div class="right-section">
+                <div class="section">
+                    <h3>Generated Melody</h3>
+                    <div class="melody-display empty" id="melodyDisplay">
+                        <p>Your melody will appear here after generation</p>
+                    </div>
+                    
+                    <div class="controls" style="margin: 20px 0;">
+                        <button class="btn btn-success" id="playBtn" disabled>Play</button>
+                        <button class="btn btn-danger" id="stopBtn" disabled>Stop</button>
+                        <button class="btn btn-secondary" id="downloadBtn" disabled>Download MIDI</button>
+                    </div>
+                    
+                    <div class="audio-controls" id="audioControls" style="display: none;">
+                        <div class="instrument-selector">
+                            <label for="instrumentSelect">Instrument:</label>
+                            <select id="instrumentSelect">
+                                <option value="piano">Grand Piano</option>
+                                <option value="acoustic">Acoustic Guitar</option>
+                                <option value="violin">Violin</option>
+                                <option value="flute">Flute</option>
+                                <option value="synth">Warm Synth</option>
+                            </select>
+                        </div>
+                        
+                        <div class="audio-settings">
+                            <div class="setting-group">
+                                <label for="reverbSlider">Reverb:</label>
+                                <input type="range" id="reverbSlider" min="0" max="1" step="0.1" value="0.3">
+                                <input type="number" id="reverbValue" min="0" max="1" step="0.1" value="0.3">
+                            </div>
+                            
+                            <div class="setting-group">
+                                <label for="volumeSlider">Volume:</label>
+                                <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="0.7">
+                                <input type="number" id="volumeValue" min="0" max="1" step="0.1" value="0.7">
+                            </div>
+                        </div>
+                        
+                        <div class="playback-info" id="playbackInfo">
+                            Ready to play your generated melody
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3>Music Theory Analysis</h3>
+                    <div class="music-analysis" id="musicAnalysis">
+                        <h4>Analyze Your Melody</h4>
+                        <div class="analysis-content" id="analysisContent">
+                            <p>Generate a melody first, then click "Analyze Melody" to get insights about the music theory behind your creation.</p>
+                        </div>
+                        <button class="analyze-btn" id="analyzeBtn" disabled>Analyze Melody</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedChords = [];
+        let generatedMelody = null;
+        let midiPart = null;
+        let started = false;
+        let isPlaying = false;
+        let currentSynth = null;
+        let reverb = null;
+        let masterVolume = null;
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAvailableChords();
+            setupEventListeners();
+        });
+
+        function loadAvailableChords() {
+            fetch('/api/chords')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.chords) {
+                        displayChords(data.chords);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading chords:', error);
+                    showStatus('Error loading available chords', 'error');
+                });
+        }
+
+        function displayChords(chords) {
+            const chordInput = document.getElementById('chordInput');
+            const chordDropdown = document.getElementById('chordDropdown');
+            const selectedChordsDisplay = document.getElementById('selectedChordsDisplay');
+
+            chordInput.addEventListener('input', function() {
+                const filter = this.value.toLowerCase();
+                chordDropdown.innerHTML = '';
+                chordDropdown.classList.remove('show');
+
+                if (filter.length > 0) {
+                    const filteredChords = chords.filter(chord => chord.toLowerCase().includes(filter));
+                    if (filteredChords.length > 0) {
+                        filteredChords.forEach(chord => {
+                            const option = document.createElement('div');
+                            option.className = 'chord-option';
+                            option.textContent = chord;
+                            option.onclick = () => {
+                                addChord(chord);
+                                chordInput.value = '';
+                                chordDropdown.classList.remove('show');
+                            };
+                            chordDropdown.appendChild(option);
+                        });
+                        chordDropdown.classList.add('show');
+                    } else {
+                        chordDropdown.innerHTML = '<div class="no-results">No chords found matching "${filter}"</div>';
+                        chordDropdown.classList.add('show');
+                    }
+                }
+            });
+
+            // Add keyboard navigation
+            chordInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && chordDropdown.classList.contains('show')) {
+                    const firstOption = chordDropdown.querySelector('.chord-option');
+                    if (firstOption) {
+                        firstOption.click();
+                    }
+                } else if (e.key === 'Escape') {
+                    chordDropdown.classList.remove('show');
+                    chordInput.blur();
+                }
+            });
+
+            chordInput.addEventListener('blur', function() {
+                setTimeout(() => {
+                    chordDropdown.classList.remove('show');
+                }, 100);
+            });
+
+
+        }
+
+        function addChord(chord) {
+            if (!selectedChords.includes(chord)) {
+                selectedChords.push(chord);
+                displaySelectedChords();
+                updateGenerateButton();
+            }
+        }
+
+        function removeChord(chord) {
+            selectedChords = selectedChords.filter(c => c !== chord);
+            displaySelectedChords();
+            updateGenerateButton();
+        }
+
+        function displaySelectedChords() {
+            const selectedChordsDisplay = document.getElementById('selectedChordsDisplay');
+            selectedChordsDisplay.innerHTML = '';
+            selectedChords.forEach(chord => {
+                const tag = document.createElement('div');
+                tag.className = 'selected-chord-tag';
+                tag.innerHTML = `
+                    <span>${chord}</span>
+                    <button class="remove-chord" onclick="removeChord('${chord}')">×</button>
+                `;
+                selectedChordsDisplay.appendChild(tag);
+            });
+        }
+
+        function updateGenerateButton() {
+            const generateBtn = document.getElementById('generateBtn');
+            generateBtn.disabled = selectedChords.length === 0;
+        }
+
+        function setupEventListeners() {
+            document.getElementById('generateBtn').onclick = generateMelody;
+            document.getElementById('playBtn').onclick = playMelody;
+            document.getElementById('stopBtn').onclick = stopMelody;
+            document.getElementById('downloadBtn').onclick = downloadMelody;
+            document.getElementById('analyzeBtn').onclick = analyzeMelody;
+            
+            // Audio control event listeners
+            setupAudioControls();
+        }
+
+        function setupAudioControls() {
+            // Instrument selector
+            document.getElementById('instrumentSelect').addEventListener('change', function() {
+                if (currentSynth) {
+                    currentSynth.disconnect();
+                }
+                createInstrument(this.value);
+            });
+            
+            // Reverb control
+            const reverbSlider = document.getElementById('reverbSlider');
+            const reverbValue = document.getElementById('reverbValue');
+            
+            reverbSlider.addEventListener('input', function() {
+                reverbValue.value = this.value;
+                if (reverb) {
+                    reverb.wet.value = this.value;
+                }
+            });
+            
+            reverbValue.addEventListener('input', function() {
+                reverbSlider.value = this.value;
+                if (reverb) {
+                    reverb.wet.value = this.value;
+                }
+            });
+            
+            // Volume control
+            const volumeSlider = document.getElementById('volumeSlider');
+            const volumeValue = document.getElementById('volumeValue');
+            
+            volumeSlider.addEventListener('input', function() {
+                volumeValue.value = this.value;
+                if (masterVolume) {
+                    masterVolume.volume.value = Tone.gainToDb(this.value);
+                }
+            });
+            
+            volumeValue.addEventListener('input', function() {
+                volumeSlider.value = this.value;
+                if (masterVolume) {
+                    masterVolume.volume.value = Tone.gainToDb(this.value);
+                }
+            });
+        }
+
+        function generateMelody() {
+            if (selectedChords.length === 0) {
+                showStatus('Please select at least one chord', 'error');
+                return;
+            }
+
+            const duration = parseFloat(document.getElementById('duration').value);
+            
+            showLoading(true);
+            showStatus('', '');
+            
+            fetch('/api/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    chords: selectedChords,
+                    duration: duration
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                showLoading(false);
+                
+                if (data.success) {
+                    generatedMelody = data;
+                    displayMelody(data.notes);
+                    enablePlayAndDownload();
+                    showStatus('Melody generated successfully! Click Play to hear it.', 'success');
+                } else {
+                    showStatus(data.error || 'Failed to generate melody', 'error');
+                }
+            })
+            .catch(error => {
+                showLoading(false);
+                console.error('Error:', error);
+                showStatus('Error generating melody', 'error');
+            });
+        }
+
+        function displayMelody(notes) {
+            const display = document.getElementById('melodyDisplay');
+            display.innerHTML = '';
+            display.classList.remove('empty');
+            
+            const notesContainer = document.createElement('div');
+            notesContainer.className = 'melody-notes';
+            
+            notes.forEach(note => {
+                const noteElement = document.createElement('div');
+                noteElement.className = 'note';
+                noteElement.textContent = note;
+                notesContainer.appendChild(noteElement);
+            });
+            
+            display.appendChild(notesContainer);
+            
+            // Show audio controls
+            document.getElementById('audioControls').style.display = 'block';
+        }
+
+        function analyzeMelody() {
+            if (!generatedMelody || !selectedChords.length) {
+                showStatus('Please generate a melody first', 'error');
+                return;
+            }
+
+            const analysisContent = document.getElementById('analysisContent');
+            const analyzeBtn = document.getElementById('analyzeBtn');
+            
+            // Show loading state
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = 'Analyzing...';
+            analysisContent.innerHTML = '<div class="analysis-loading">Analyzing your melody...</div>';
+            
+            fetch('/api/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    melody: generatedMelody.notes,
+                    chords: selectedChords,
+                    duration: generatedMelody.duration
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze Melody';
+                
+                if (data.success) {
+                    analysisContent.innerHTML = data.analysis;
+                } else {
+                    analysisContent.innerHTML = '<p style="color: #dc3545;">Error: ' + (data.error || 'Failed to analyze melody') + '</p>';
+                }
+            })
+            .catch(error => {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze Melody';
+                console.error('Error analyzing melody:', error);
+                analysisContent.innerHTML = '<p style="color: #dc3545;">Error analyzing melody: ' + error.message + '</p>';
+            });
+        }
+
+        function enablePlayAndDownload() {
+            document.getElementById('playBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('downloadBtn').disabled = false;
+            document.getElementById('analyzeBtn').disabled = false;
+        }
+
+        async function playMelody() {
+            if (!generatedMelody) return;
+            
+            try {
+                if (!started) {
+                    await Tone.start();
+                    started = true;
+                }
+                
+                // Stop any currently playing audio
+                Tone.Transport.stop();
+                Tone.Transport.seconds = 0;
+                
+                // Load and schedule the MIDI
+                await loadAndScheduleMIDI();
+                
+                // Start playback
+                Tone.Transport.start();
+                isPlaying = true;
+                
+                // Update UI
+                document.getElementById('playBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                document.getElementById('playbackInfo').textContent = 'Playing your melody...';
+                
+                showStatus('Melody is now playing!', 'success');
+                
+            } catch (error) {
+                console.error('Error playing melody:', error);
+                showStatus('Error playing melody: ' + error.message, 'error');
+            }
+        }
+
+        function createInstrument(instrumentType) {
+            // Clean up previous instrument
+            if (currentSynth) {
+                currentSynth.disconnect();
+            }
+            
+            // Create audio effects
+            if (!reverb) {
+                reverb = new Tone.Reverb(2.0).toDestination();
+                reverb.wet.value = parseFloat(document.getElementById('reverbSlider').value);
+            }
+            
+            if (!masterVolume) {
+                masterVolume = new Tone.Volume().toDestination();
+                masterVolume.volume.value = Tone.gainToDb(parseFloat(document.getElementById('volumeSlider').value));
+            }
+            
+            // Create instrument based on selection
+            switch (instrumentType) {
+                case 'piano':
+                    currentSynth = new Tone.Sampler({
+                        urls: {
+                            "C4": "C4.mp3",
+                            "D#4": "Ds4.mp3",
+                            "F#4": "Fs4.mp3",
+                        },
+                        baseUrl: "https://tonejs.github.io/audio/salamander/",
+                        onload: () => console.log('Piano loaded')
+                    }).chain(reverb, masterVolume);
+                    break;
+                    
+                case 'acoustic':
+                    currentSynth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: {
+                            type: "triangle"
+                        },
+                        envelope: {
+                            attack: 0.1,
+                            decay: 0.3,
+                            sustain: 0.4,
+                            release: 1.0
+                        }
+                    }).chain(reverb, masterVolume);
+                    break;
+                    
+                case 'violin':
+                    currentSynth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: {
+                            type: "sine"
+                        },
+                        envelope: {
+                            attack: 0.2,
+                            decay: 0.1,
+                            sustain: 0.8,
+                            release: 1.5
+                        }
+                    }).chain(reverb, masterVolume);
+                    break;
+                    
+                case 'flute':
+                    currentSynth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: {
+                            type: "sine"
+                        },
+                        envelope: {
+                            attack: 0.1,
+                            decay: 0.2,
+                            sustain: 0.9,
+                            release: 2.0
+                        }
+                    }).chain(reverb, masterVolume);
+                    break;
+                    
+                case 'synth':
+                default:
+                    currentSynth = new Tone.PolySynth(Tone.Synth, {
+                        oscillator: {
+                            type: "triangle"
+                        },
+                        envelope: {
+                            attack: 0.1,
+                            decay: 0.2,
+                            sustain: 0.6,
+                            release: 0.8
+                        }
+                    }).chain(reverb, masterVolume);
+                    break;
+            }
+        }
+
+        async function loadAndScheduleMIDI() {
+            try {
+                // Get the MIDI file from the server
+                const response = await fetch(`/api/midi/${generatedMelody.file_id}`);
+                const arrayBuffer = await response.arrayBuffer();
+                
+                // Parse the MIDI
+                const midi = new Midi(arrayBuffer);
+                
+                // Create instrument if not exists
+                if (!currentSynth) {
+                    const instrumentType = document.getElementById('instrumentSelect').value;
+                    createInstrument(instrumentType);
+                }
+                
+                // Get the first track (our melody)
+                const track = midi.tracks[0];
+                const notes = track.notes.map(n => ({
+                    time: n.time,
+                    note: n.name,
+                    duration: n.duration,
+                    velocity: n.velocity
+                }));
+                
+                // Create and schedule the part
+                midiPart = new Tone.Part((time, value) => {
+                    currentSynth.triggerAttackRelease(value.note, value.duration, time, value.velocity);
+                }, notes);
+                
+                midiPart.start(0);
+                midiPart.loop = false;
+                
+                // Set up completion callback
+                midiPart.onEnd = () => {
+                    isPlaying = false;
+                    document.getElementById('playBtn').disabled = false;
+                    document.getElementById('stopBtn').disabled = true;
+                    document.getElementById('playbackInfo').textContent = 'Melody finished playing';
+                };
+                
+            } catch (error) {
+                console.error('Error loading MIDI:', error);
+                throw new Error('Failed to load MIDI file');
+            }
+        }
+
+        function stopMelody() {
+            Tone.Transport.stop();
+            if (midiPart) {
+                midiPart.stop();
+            }
+            
+            isPlaying = false;
+            document.getElementById('playBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('playbackInfo').textContent = 'Playback stopped';
+            
+            showStatus('Playback stopped', 'success');
+        }
+
+        function downloadMelody() {
+            if (!generatedMelody) return;
+            
+            // Use the file ID for download
+            window.open(`/api/download/${generatedMelody.file_id}`, '_blank');
+        }
+
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            loading.style.display = show ? 'block' : 'none';
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            if (message) {
+                status.textContent = message;
+                status.className = `status ${type}`;
+                status.style.display = 'block';
+            } else {
+                status.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html> 
