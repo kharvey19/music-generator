@@ -66,22 +66,6 @@ The melody will be generated in real-time and displayed as note names. You can a
 - **Output**: Harmonically appropriate melody notes
 - **Architecture**: Embedding → LSTM → Fully Connected layers
 
-## File Structure
-
-```
-music/
-├── app.py                 # Flask web application
-├── run_app.py            # Startup script
-├── templates/
-│   └── index.html        # Web UI template
-├── melody_generator/     # Core ML functionality
-│   ├── model.py          # LSTM model definition
-│   ├── predict.py        # Command-line prediction
-│   ├── data/             # Training data
-│   └── *.pth            # Trained model files
-└── requirements.txt      # Python dependencies
-```
-
 
 
 
