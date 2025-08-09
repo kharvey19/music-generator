@@ -8,6 +8,7 @@ import tempfile
 import requests
 import json
 from melody_generator.model import load_model
+import openai
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -15,10 +16,7 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-# LLM Configuration
-LLM_API_KEY = os.environ.get('OPENAI_API_KEY')  # Set this environment variable
-LLM_API_URL = "https://api.openai.com/v1/chat/completions"
-LLM_MODEL = "gpt-4"  # or "gpt-3.5-turbo" for faster/cheaper analysis
+openai.api_key = os.environ.get('OPENAI_API_KEY')
 
 # Global variables for the model
 model = None
@@ -102,7 +100,13 @@ def generate_melody():
         
         with torch.no_grad():
             output = model(input_chords)
-            predicted_notes = output.argmax(dim=1).squeeze()
+            predicted_notes_tensor = output.argmax(dim=1).squeeze()
+
+        # Ensure predicted_notes is a list, even for a single note
+        if predicted_notes_tensor.dim() == 0:
+            predicted_notes = [predicted_notes_tensor.item()]
+        else:
+            predicted_notes = predicted_notes_tensor.tolist()
         
         # Convert to MIDI
         midi = pretty_midi.PrettyMIDI()
@@ -112,7 +116,7 @@ def generate_melody():
         for note_num in predicted_notes:
             note = pretty_midi.Note(
                 velocity=100,
-                pitch=note_num.item(),
+                pitch=note_num,
                 start=time,
                 end=time + duration_per_chord
             )
@@ -137,7 +141,8 @@ def generate_melody():
         return jsonify({
             'success': True,
             'file_id': file_id,
-            'notes': [idx_to_note.get(idx.item(), f"MIDI:{idx.item()}") for idx in predicted_notes]
+            'notes': [idx_to_note.get(idx, f"MIDI:{idx}") for idx in predicted_notes],
+            'duration': duration_per_chord
         })
         
     except Exception as e:
@@ -224,104 +229,103 @@ def analyze_melody():
 def generate_music_theory_analysis(melody_notes, selected_chords, duration):
     """Generate music theory analysis using LLM"""
     
-    if not LLM_API_KEY:
-        return """
+    if not openai.api_key:
+        num_notes = len(melody_notes) if hasattr(melody_notes, '__len__') else 0
+        num_chords = len(selected_chords) if hasattr(selected_chords, '__len__') else 0
+        total_duration = duration * num_notes
+        chords_list = ", ".join(selected_chords) if isinstance(selected_chords, list) else str(selected_chords)
+
+        return f"""
         <h4>🎵 Music Theory Analysis</h4>
-        <p style="color: #dc3545;">⚠️ LLM API key not configured. Please set the OPENAI_API_KEY environment variable to enable AI-powered music theory analysis.</p>
+        <p style=\"color: #dc3545;\">⚠️ LLM API key not configured. Please set the OPENAI_API_KEY environment variable to enable AI-powered music theory analysis.</p>
         <p>For now, here's a basic analysis:</p>
         <ul>
-            <li><strong>Melody:</strong> {len(melody_notes)} notes over {len(selected_chords)} chords</li>
-            <li><strong>Duration:</strong> {duration * len(selected_chords):.1f} seconds</li>
-            <li><strong>Chords:</strong> {', '.join(selected_chords)}</li>
+            <li><strong>Melody:</strong> {num_notes} notes over {num_chords} chords</li>
+            <li><strong>Duration:</strong> {total_duration:.1f} seconds</li>
+            <li><strong>Chords:</strong> {chords_list}</li>
         </ul>
-        """.format(len(melody_notes), len(selected_chords), duration * len(selected_chords), ', '.join(selected_chords))
+        """
     
     try:
-        # Prepare the prompt for the LLM
+        # Prepare a concise prompt for the LLM
         prompt = f"""
-        You are an expert music theorist and educator. Analyze the following AI-generated melody and provide comprehensive music theory insights.
+        You are an expert music theorist and educator.
 
+        Analyze this AI-generated melody concisely.
         MELODY DATA:
         - Notes: {melody_notes}
         - Chords: {selected_chords}
         - Duration per chord: {duration} seconds
-        - Total duration: {duration * len(selected_chords):.1f} seconds
+        - Total duration: {duration * len(melody_notes):.1f} seconds
 
-        Please provide a detailed analysis covering:
-
-        1. **Chord Progression Analysis**: 
-           - Identify the chord progression pattern
-           - Explain the harmonic function and emotional character
-           - Note any common or interesting progressions
-
-        2. **Melody Analysis**:
-           - Analyze the melodic contour and structure
-           - Identify any motifs or patterns
-           - Discuss the rhythm and note density
-           - Note the relationship between melody and harmony
-
-        3. **Music Theory Insights**:
-           - Explain the key and scale relationships
-           - Discuss consonance/dissonance
-           - Identify any interesting harmonic or melodic features
-           - Suggest musical context or genre associations
-
-        4. **Educational Notes**:
-           - Provide insights that would help someone learn music theory
-           - Explain any advanced concepts in simple terms
-           - Suggest ways to expand or develop the melody
-
-        Format your response in HTML with appropriate headings (h4, h5) and paragraphs. Be engaging, educational, and specific to the musical material provided.
+        Return HTML ONLY as a short unordered list with 4–6 bullet points (<ul><li>...</li></ul>).
+        Each bullet should be one sentence, clear and actionable.
+        No headings, no preambles, no code blocks, no extra text outside the <ul>.
+        Keep the total under ~120 words.
         """
 
-        # Call the LLM API
-        headers = {
-            "Authorization": f"Bearer {LLM_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "model": LLM_MODEL,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are an expert music theorist and educator. Provide clear, engaging, and educational music theory analysis in HTML format."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "max_tokens": 1500,
-            "temperature": 0.7
-        }
-        
-        response = requests.post(LLM_API_URL, headers=headers, json=data, timeout=30)
-        response.raise_for_status()
-        
-        result = response.json()
-        llm_analysis = result['choices'][0]['message']['content']
-        
-        # Format the response
-        formatted_analysis = f"""
-        <h4>🎵 AI-Powered Music Theory Analysis</h4>
-        <p><em>Analysis generated using {LLM_MODEL}</em></p>
+        # Use NVIDIA NIM endpoint directly when an nvapi key is detected to avoid SDK routing issues
+        if openai.api_key:
+            url = 'https://integrate.api.nvidia.com/v1/chat/completions'
+            headers = {
+                'Authorization': f'Bearer {openai.api_key}',
+                'Content-Type': 'application/json'
+            }
+            payload = {
+                'model': 'meta/llama-3.1-8b-instruct',
+                'messages': [
+                    {"role": "system", "content": "You are an expert music theorist and educator. Provide clear, engaging, and educational music theory analysis in HTML format."},
+                    {"role": "user", "content": prompt}
+                ],
+                'max_tokens': 400,
+                'temperature': 0.7
+            }
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            if response.status_code != 200:
+                raise Exception(f"NVIDIA API error {response.status_code}: {response.text}")
+            data = response.json()
+            llm_analysis = data["choices"][0]["message"]["content"]
+        else:
+            completion = openai.ChatCompletion.create(
+                model='meta/llama-3.1-8b-instruct',
+                messages=[
+                    {"role": "system", "content": "You are an expert music theorist and educator. Provide clear, engaging, and educational music theory analysis in HTML format."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=400,
+                temperature=0.7
+            )
+            llm_analysis = completion["choices"][0]["message"]["content"]
+
+        return f"""
         {llm_analysis}
         """
-        
-        return formatted_analysis
-        
-    except requests.exceptions.RequestException as e:
-        return f"""
-        <h4>🎵 Music Theory Analysis</h4>
-        <p style="color: #dc3545;">⚠️ Error connecting to LLM service: {str(e)}</p>
-        <p>Please check your internet connection and API key configuration.</p>
-        """
     except Exception as e:
+        message = str(e)
+        if "401" in message or "Unauthorized" in message:
+            return f"""
+            <h4>🎵 Music Theory Analysis</h4>
+            <p style=\"color: #dc3545;\">⚠️ Unauthorized (401) from LLM service.</p>
+            <ul>
+                <li>If using <strong>OpenAI</strong>: verify <code>OPENAI_API_KEY</code> is correct (starts with <code>sk-</code>) and that your account has access to <code>meta/llama-3.1-8b-instruct</code>.</li>
+                <li>If using <strong>NVIDIA NIM</strong>: use your <code>nvapi-</code> key in <code>OPENAI_API_KEY</code> or <code>NVIDIA_API_KEY</code>. Ensure the API base is <code>https://integrate.api.nvidia.com/v1</code> and the model is a NIM chat model (e.g., <code>meta/llama-3.1-8b-instruct</code>).</li>
+                <li>Restart the server after updating environment variables.</li>
+            </ul>
+            """
+        if "404" in message and "NVIDIA" in message:
+            return f"""
+            <h4>🎵 Music Theory Analysis</h4>
+            <p style=\"color: #dc3545;\">⚠️ 404 from NVIDIA endpoint.</p>
+            <ul>
+                <li>Verify the endpoint <code>https://integrate.api.nvidia.com/v1/chat/completions</code> is reachable from your network.</li>
+                <li>Confirm the model name <code>meta/llama-3.1-8b-instruct</code> is available to your API key. Try <code>meta/llama-3.1-8b-instruct</code>.</li>
+                <li>Ensure there are no corporate proxies/firewalls blocking the request.</li>
+            </ul>
+            """
         return f"""
         <h4>🎵 Music Theory Analysis</h4>
-        <p style="color: #dc3545;">⚠️ Error generating analysis: {str(e)}</p>
-        <p>Please try again or contact support if the issue persists.</p>
+        <p style=\"color: #dc3545;\">⚠️ Error generating analysis: {message}</p>
+        <p>Please try again after checking your API key and internet connection.</p>
         """
 
 
