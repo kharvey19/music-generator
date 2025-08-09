@@ -4,9 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Melody Generator</title>
+    <link rel="icon" href="{{ url_for('static', filename='music.png') }}" type="image/png">
     <!-- Tone.js + MIDI parser for audio playback -->
     <script src="https://unpkg.com/tone@latest/build/Tone.js"></script>
     <script src="https://unpkg.com/@tonejs/midi@latest/build/Midi.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.7.6/build/opensheetmusicdisplay.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -467,6 +469,27 @@
             font-size: 0.9rem;
         }
 
+        /* Playback timeline */
+        .playback-timeline {
+            margin: 12px 0 10px 0;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            position: relative;
+            overflow: hidden;
+            display: none;
+        }
+        .playback-progress {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 0%;
+            background: #6eacda;
+            box-shadow: 0 0 8px rgba(110, 172, 218, 0.5);
+            transition: width 0.05s linear;
+        }
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -570,6 +593,135 @@
                 0 0 0 1px rgba(255,255,255,0.2);
         }
 
+        /* Chat assistant styles */
+        .chat-toggle {
+            margin-top: 12px;
+            text-align: left;
+        }
+        .chat-toggle button {
+            background: transparent;
+            color: #6eacda;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        .chat-panel {
+            display: none;
+            margin-top: 12px;
+            background: #101010;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 12px;
+        }
+        .chat-panel.show { display: block; }
+        .chat-messages {
+            max-height: 220px;
+            overflow-y: auto;
+            padding: 8px;
+            background: #0a0a0a;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .chat-msg { margin: 8px 0; line-height: 1.4; }
+        .chat-msg.user { color: #e2e2b6; }
+        .chat-msg.assistant { color: #cde6ff; }
+        .chat-input-row { display: flex; gap: 8px; }
+        .chat-input-row input { flex: 1; padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: #0a0a0a; color: #fff; }
+        .chat-input-row button { padding: 10px 16px; }
+        .suggestion-actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .chip { padding: 6px 10px; border-radius: 16px; background: #1a1a1a; border: 1px solid rgba(255,255,255,0.15); color: #fff; cursor: pointer; font-size: 0.9rem; }
+        .chip:hover { background: #2a2a2a; }
+
+        /* Chat header with close button */
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .chat-title { color: #c4a7e7; font-weight: 600; font-size: 0.95rem; }
+        .chat-close {
+            background: transparent;
+            color: #aaa;
+            border: none;
+            font-size: 18px;
+            line-height: 1;
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .chat-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
+
+        /* Overrides to make messages cuter gray bubbles and improve visibility */
+        .chat-panel.show {
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-messages {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 45vh;
+            overflow-y: auto;
+        }
+        .chat-msg {
+            align-self: flex-start;
+            background: #2a2a2a;
+            color: #ffffff;
+            padding: 10px 14px;
+            border-radius: 14px;
+            max-width: 80%;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            border: 1px solid rgba(255,255,255,0.08);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .chat-msg.user {
+            align-self: flex-end;
+            background: #3a3a3a;
+            color: #ffffff;
+        }
+        .chat-msg.assistant {
+            align-self: flex-start;
+            background: #2d2d2d;
+            color: #ffffff;
+        }
+        /* Make suggestion chips match selected chord tag styling */
+        .chip {
+            background: #6eacda;
+            color: #ffffff;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-weight: 600;
+        }
+        .chip:hover { background: #7bb8e8; }
+
+        /* Chat-specific lavender overrides for Ask button and suggestion chips */
+        .chat-panel .btn-primary {
+            background: #c4a7e7;
+            color: #ffffff;
+            border-color: rgba(255,255,255,0.25);
+        }
+        .chat-panel .btn-primary:hover { background: #d3b8f4; }
+        .chat-panel .chip {
+            background: #6eacda;
+            color: #ffffff;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .chat-panel .chip:hover { background: #7bb8e8; }
+
+        /* OSMD sheet container styling */
+        #sheetContainer {
+            color: #000;
+        }
+        #sheetContainer svg {
+            background: #ffffff !important;
+        }
+
         @media (max-width: 768px) {
             .content {
                 grid-template-columns: 1fr;
@@ -638,6 +790,20 @@
                             <input type="text" id="chordInput" class="chord-input" placeholder="Type to search chords...">
                             <div class="chord-dropdown" id="chordDropdown"></div>
                         </div>
+                        <div class="chat-toggle">
+                            <button id="toggleChatBtn">Need help getting started?</button>
+                        </div>
+                        <div id="chatPanel" class="chat-panel">
+                            <div class="chat-header">
+                                <span class="chat-title">Chord ideas assistant</span>
+                                <button id="closeChatBtn" class="chat-close" aria-label="Close chat">×</button>
+                            </div>
+                            <div class="chat-messages" id="chatMessages"></div>
+                            <div class="chat-input-row">
+                                <input type="text" id="chatInput" placeholder="Ask for a chord idea (e.g., 'Suggest a catchy pop progression in C major')">
+                                <button class="btn btn-primary" id="sendChatBtn">Ask</button>
+                            </div>
+                        </div>
                         <div class="selected-chords" id="selectedChordsDisplay">
                             <!-- Selected chords will be displayed here -->
                         </div>
@@ -669,6 +835,10 @@
                     <h3>Generated Melody</h3>
                     <div class="melody-display empty" id="melodyDisplay">
                         <p>Your melody will appear here after generation</p>
+                    </div>
+
+                    <div class="playback-timeline" id="playbackTimeline">
+                        <div class="playback-progress" id="playbackProgress"></div>
                     </div>
                     
                     <div class="controls" style="margin: 20px 0;">
@@ -710,6 +880,15 @@
                 </div>
                 
                 <div class="section">
+                    <h3>Sheet Music</h3>
+                    <div class="controls" style="margin: 0 0 10px;">
+                        <button class="btn btn-secondary" id="toggleSheetBtn" disabled>Show Sheet Music</button>
+                        <button class="btn btn-primary" id="downloadSheetBtn" disabled>Download Image</button>
+                    </div>
+                    <div id="sheetContainer" style="display:none; background:#ffffff; border:1px solid rgba(0,0,0,0.1); border-radius:6px; padding:10px; margin-bottom:10px;"></div>
+                </div>
+                
+                <div class="section">
                     <h3>Music Theory Analysis</h3>
                     <div class="music-analysis" id="musicAnalysis">
                         <div class="analysis-content" id="analysisContent">
@@ -731,11 +910,16 @@
         let currentSynth = null;
         let reverb = null;
         let masterVolume = null;
+        let chatHistory = [];
+        let totalDurationSec = 0;
+        let playbackAnimationId = null;
+        let osmd = null;
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
             loadAvailableChords();
             setupEventListeners();
+            setupChat();
         });
 
         function loadAvailableChords() {
@@ -848,6 +1032,10 @@
             
             // Audio control event listeners
             setupAudioControls();
+
+            // Sheet music controls
+            document.getElementById('toggleSheetBtn').onclick = toggleSheetMusic;
+            document.getElementById('downloadSheetBtn').onclick = downloadSheetImage;
         }
 
         function setupAudioControls() {
@@ -954,8 +1142,14 @@
             
             display.appendChild(notesContainer);
             
-            // Show audio controls
+            // Show audio controls and timeline
             document.getElementById('audioControls').style.display = 'block';
+            const timeline = document.getElementById('playbackTimeline');
+            const progress = document.getElementById('playbackProgress');
+            if (timeline && progress) {
+                timeline.style.display = 'block';
+                progress.style.width = '0%';
+            }
         }
 
         function analyzeMelody() {
@@ -1007,6 +1201,8 @@
             document.getElementById('stopBtn').disabled = false;
             document.getElementById('downloadBtn').disabled = false;
             document.getElementById('analyzeBtn').disabled = false;
+            document.getElementById('toggleSheetBtn').disabled = false;
+            document.getElementById('downloadSheetBtn').disabled = false;
         }
 
         async function playMelody() {
@@ -1033,6 +1229,21 @@
                 document.getElementById('playBtn').disabled = true;
                 document.getElementById('stopBtn').disabled = false;
                 document.getElementById('playbackInfo').textContent = 'Playing your melody...';
+                
+                // Start progress animation loop
+                const progressEl = document.getElementById('playbackProgress');
+                const step = () => {
+                    if (!isPlaying || !progressEl || !totalDurationSec) return;
+                    const t = Math.min(Tone.Transport.seconds / totalDurationSec, 1);
+                    progressEl.style.width = `${(t * 100).toFixed(2)}%`;
+                    if (t < 1) {
+                        playbackAnimationId = requestAnimationFrame(step);
+                    }
+                };
+                if (progressEl) {
+                    progressEl.style.width = '0%';
+                    playbackAnimationId = requestAnimationFrame(step);
+                }
                 
                 showStatus('Melody is now playing!', 'success');
                 
@@ -1156,6 +1367,12 @@
                     velocity: n.velocity
                 }));
                 
+                // Compute total duration
+                totalDurationSec = 0;
+                if (notes.length) {
+                    totalDurationSec = notes.reduce((maxT, n) => Math.max(maxT, n.time + n.duration), 0);
+                }
+                
                 // Create and schedule the part
                 midiPart = new Tone.Part((time, value) => {
                     currentSynth.triggerAttackRelease(value.note, value.duration, time, value.velocity);
@@ -1170,6 +1387,13 @@
                     document.getElementById('playBtn').disabled = false;
                     document.getElementById('stopBtn').disabled = true;
                     document.getElementById('playbackInfo').textContent = 'Melody finished playing';
+                    // Fill progress and stop animation
+                    const progressEl = document.getElementById('playbackProgress');
+                    if (progressEl) progressEl.style.width = '100%';
+                    if (playbackAnimationId) {
+                        cancelAnimationFrame(playbackAnimationId);
+                        playbackAnimationId = null;
+                    }
                 };
                 
             } catch (error) {
@@ -1188,6 +1412,14 @@
             document.getElementById('playBtn').disabled = false;
             document.getElementById('stopBtn').disabled = true;
             document.getElementById('playbackInfo').textContent = 'Playback stopped';
+            
+            // Reset progress and stop animation
+            const progressEl = document.getElementById('playbackProgress');
+            if (progressEl) progressEl.style.width = '0%';
+            if (playbackAnimationId) {
+                cancelAnimationFrame(playbackAnimationId);
+                playbackAnimationId = null;
+            }
             
             showStatus('Playback stopped', 'success');
         }
@@ -1213,6 +1445,179 @@
             } else {
                 status.style.display = 'none';
             }
+        }
+
+        function setupChat() {
+            const toggleBtn = document.getElementById('toggleChatBtn');
+            const chatPanel = document.getElementById('chatPanel');
+            const sendBtn = document.getElementById('sendChatBtn');
+            const chatInput = document.getElementById('chatInput');
+            const closeBtn = document.getElementById('closeChatBtn');
+
+            toggleBtn.addEventListener('click', () => {
+                chatPanel.classList.toggle('show');
+                if (chatPanel.classList.contains('show') && chatHistory.length === 0) {
+                    appendAssistant("Hi! Tell me the vibe or key you want. I can suggest a short progression and explain why it works.");
+                }
+            });
+
+            closeBtn.addEventListener('click', () => {
+                chatPanel.classList.remove('show');
+            });
+
+            sendBtn.addEventListener('click', () => sendChat());
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') sendChat();
+                if (e.key === 'Escape') chatPanel.classList.remove('show');
+            });
+        }
+
+        function appendUser(text) {
+            chatHistory.push({ role: 'user', content: text });
+            const box = document.getElementById('chatMessages');
+            const div = document.createElement('div');
+            div.className = 'chat-msg user';
+            div.textContent = text;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function appendAssistant(text) {
+            chatHistory.push({ role: 'assistant', content: text });
+            const box = document.getElementById('chatMessages');
+            const div = document.createElement('div');
+            div.className = 'chat-msg assistant';
+            div.textContent = text;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+
+            // Try to parse a suggested progression line and create quick-add chips
+            const match = text.match(/Progression:\s*([^\n]+)/i);
+            if (match && match[1]) {
+                const chordsLine = match[1].split(',').map(s => s.trim()).filter(Boolean);
+                if (chordsLine.length) {
+                    const actions = document.createElement('div');
+                    actions.className = 'suggestion-actions';
+                    const addAll = document.createElement('button');
+                    addAll.className = 'btn btn-secondary';
+                    addAll.textContent = 'Add progression';
+                    addAll.onclick = () => {
+                        chordsLine.forEach(c => addChord(c));
+                    };
+                    actions.appendChild(addAll);
+                    chordsLine.forEach(c => {
+                        const chip = document.createElement('span');
+                        chip.className = 'chip';
+                        chip.textContent = c;
+                        chip.onclick = () => addChord(c);
+                        actions.appendChild(chip);
+                    });
+                    box.appendChild(actions);
+                    box.scrollTop = box.scrollHeight;
+                }
+            }
+        }
+
+        async function sendChat() {
+            const input = document.getElementById('chatInput');
+            const text = (input.value || '').trim();
+            if (!text) return;
+            appendUser(text);
+            input.value = '';
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        messages: chatHistory,
+                        selected_chords: selectedChords
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    appendAssistant(data.reply);
+                } else {
+                    appendAssistant('Sorry, I ran into an error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                appendAssistant('Network error: ' + e.message);
+            }
+        }
+
+        async function toggleSheetMusic() {
+            const container = document.getElementById('sheetContainer');
+            if (!generatedMelody) return;
+            if (container.style.display === 'none') {
+                try {
+                    const res = await fetch(`/api/musicxml/${generatedMelody.file_id}`);
+                    if (!res.ok) {
+                        let msg = 'Failed to fetch MusicXML';
+                        try {
+                            const ct = res.headers.get('content-type') || '';
+                            if (ct.includes('application/json')) {
+                                const j = await res.json();
+                                msg = j.error || JSON.stringify(j);
+                            } else {
+                                msg = await res.text();
+                            }
+                        } catch (e) {}
+                        throw new Error(msg);
+                    }
+                    const xml = await res.text();
+                    container.style.display = 'block';
+                    if (!osmd) {
+                        osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(container, {
+                            autoResize: true,
+                            drawTitle: false,
+                            followCursor: true,
+                        });
+                    }
+                    await osmd.load(xml);
+                    osmd.render();
+                } catch (e) {
+                    container.style.display = 'block';
+                    container.innerHTML = `<p style="color:#dc3545;">${e.message}</p>`;
+                }
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function downloadSheetImage() {
+            const container = document.getElementById('sheetContainer');
+            if (!container || container.style.display === 'none') return;
+            const svg = container.querySelector('svg');
+            if (!svg) return;
+
+            const svgData = new XMLSerializer().serializeToString(svg);
+            const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(svgBlob);
+
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(url);
+
+                canvas.toBlob(blob => {
+                    const dl = document.createElement('a');
+                    dl.href = URL.createObjectURL(blob);
+                    dl.download = 'sheet-music.png';
+                    document.body.appendChild(dl);
+                    dl.click();
+                    document.body.removeChild(dl);
+                }, 'image/png');
+            };
+            img.onerror = function() {
+                URL.revokeObjectURL(url);
+            };
+            img.src = url;
         }
     </script>
 </body>

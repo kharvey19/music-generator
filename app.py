@@ -7,6 +7,7 @@ import pandas as pd
 import tempfile
 import requests
 import json
+import re
 from melody_generator.model import load_model
 import openai
 
@@ -185,6 +186,55 @@ def download_midi(file_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/musicxml/<file_id>')
+def serve_musicxml(file_id):
+    """Convert the generated MIDI to MusicXML and return it for sheet music rendering."""
+    try:
+        if file_id not in generated_files:
+            return jsonify({'error': 'Invalid file ID'}), 400
+        file_path = generated_files[file_id]['path']
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found'}), 404
+
+        try:
+            from music21 import converter, musicxml
+            # Parse MIDI into music21 stream
+            s = converter.parse(file_path)
+            # First try direct in-memory export
+            try:
+                exporter = musicxml.m21ToXml.GeneralObjectExporter(s)
+                xml_string = exporter.parse()
+                return app.response_class(
+                    response=xml_string,
+                    status=200,
+                    mimetype='application/vnd.recordare.musicxml+xml'
+                )
+            except Exception:
+                # Fallback: write to temp MusicXML via music21 write API
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.musicxml')
+                tmp.close()
+                try:
+                    s.write('musicxml', fp=tmp.name)
+                    with open(tmp.name, 'r', encoding='utf-8') as f:
+                        xml_text = f.read()
+                finally:
+                    try:
+                        os.unlink(tmp.name)
+                    except Exception:
+                        pass
+                return app.response_class(
+                    response=xml_text,
+                    status=200,
+                    mimetype='application/vnd.recordare.musicxml+xml'
+                )
+        except ImportError:
+            return jsonify({'error': 'music21 is not installed on the server. Please pip install music21 and restart.'}), 500
+        except Exception as e:
+            return jsonify({'error': f'MusicXML conversion failed: {e}'}), 500
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/cleanup', methods=['POST'])
 def cleanup_files():
     """Clean up old generated files"""
@@ -225,6 +275,89 @@ def analyze_melody():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/chat', methods=['POST'])
+def chat_assistant():
+    """Lightweight brainstorming chatbot for chord selection guidance"""
+    try:
+        data = request.get_json() or {}
+        messages = data.get('messages', [])
+        selected_chords = data.get('selected_chords', [])
+        available_chords = list(chord_to_idx.keys()) if chord_to_idx else []
+
+        # If no LLM key, provide a simple helpful fallback using dataset chord names
+        if not openai.api_key:
+            demo_progression = [c for c in [
+                'C-major triad', 'G-major triad', 'A-minor triad', 'F-major triad'
+            ] if c in available_chords][:4] or available_chords[:4]
+            fallback_text = (
+                "Here are some classic options to get you started. "
+                "Try a bright diatonic loop with smooth voice leading.\n"
+                f"Progression: {', '.join(demo_progression)}"
+            )
+            return jsonify({
+                'success': True,
+                'reply': fallback_text
+            })
+
+        # Build system prompt with context
+        context = (
+            "You are a friendly, expert chord progression coach for a melody generator web app. "
+            "Help users pick chord progressions and briefly explain why they work for catchy melodies. "
+            "Keep replies under ~120 words. Include exactly one concrete progression and a brief why. "
+            "Rules for the progression line: start with 'Progression: ' and list chords as a comma-separated list. "
+            "Use ONLY chord spellings from AVAILABLE_CHORDS. If a chord isn't available, substitute the closest available diatonic option. "
+            "Avoid code blocks."
+        )
+        system_extra = (
+            f"\nAVAILABLE_CHORDS: {', '.join(available_chords)}\n"
+            f"CURRENT_SELECTION: {', '.join(selected_chords)}\n"
+            "If the user asks for ideas in a key, prefer diatonic chords and common patterns (e.g., I–V–vi–IV, ii–V–I)."
+        )
+        system_msg = context + system_extra
+
+        # Call NVIDIA NIM Chat Completions (using the configured OPENAI_API_KEY as bearer)
+        url = 'https://integrate.api.nvidia.com/v1/chat/completions'
+        headers = {
+            'Authorization': f'Bearer {openai.api_key}',
+            'Content-Type': 'application/json'
+        }
+        payload = {
+            'model': 'meta/llama-3.1-8b-instruct',
+            'messages': ([{"role": "system", "content": system_msg}] + messages),
+            'max_tokens': 400,
+            'temperature': 0.7
+        }
+
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        if response.status_code != 200:
+            raise Exception(f"NVIDIA API error {response.status_code}: {response.text}")
+        data = response.json()
+        reply = data["choices"][0]["message"]["content"]
+
+        # Sanitize the Progression line to ensure only dataset chords are suggested
+        try:
+            match = re.search(r"Progression:\s*([^\n]+)", reply, flags=re.IGNORECASE)
+            if match and available_chords:
+                suggested = [s.strip() for s in match.group(1).split(',') if s.strip()]
+                filtered = [s for s in suggested if s in available_chords]
+                if not filtered:
+                    # Build a safe fallback progression from available chords
+                    fallback = [c for c in [
+                        'C-major triad', 'G-major triad', 'A-minor triad', 'F-major triad'
+                    ] if c in available_chords][:4] or available_chords[:4]
+                    filtered = fallback
+                # Replace the Progression line in the reply
+                reply = re.sub(r"Progression:\s*[^\n]+",
+                               "Progression: " + ", ".join(filtered),
+                               reply,
+                               flags=re.IGNORECASE)
+        except Exception:
+            pass
+
+        return jsonify({'success': True, 'reply': reply})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 def generate_music_theory_analysis(melody_notes, selected_chords, duration):
     """Generate music theory analysis using LLM"""
