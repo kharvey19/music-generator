@@ -81,7 +81,11 @@ def generate_melody():
         data = request.get_json()
         selected_chords = data.get('chords', [])
         duration_per_chord = data.get('duration', 0.5)  # seconds per chord
-        
+        instrument_req = (data.get('instrument') or 'piano').lower()
+        total_bars = int(data.get('total_bars', 8) or 8)
+        num_sections = int(data.get('num_sections', 1) or 1)
+        modulation_prob = float(data.get('modulation_prob', 0.0) or 0.0)
+
         if not selected_chords:
             return jsonify({'error': 'No chords selected'}), 400
         
@@ -96,28 +100,80 @@ def generate_melody():
             else:
                 return jsonify({'error': f'Chord not found: {chord}'}), 400
         
-        # Generate melody
+        # Generate base melody for the provided progression
         input_chords = torch.tensor(chord_indices)
         
         with torch.no_grad():
             output = model(input_chords)
             predicted_notes_tensor = output.argmax(dim=1).squeeze()
 
-        # Ensure predicted_notes is a list, even for a single note
+        # Ensure list
         if predicted_notes_tensor.dim() == 0:
-            predicted_notes = [predicted_notes_tensor.item()]
+            base_predicted = [predicted_notes_tensor.item()]
         else:
-            predicted_notes = predicted_notes_tensor.tolist()
-        
+            base_predicted = predicted_notes_tensor.tolist()
+
+        # Build a longer melody according to total_bars and num_sections
+        # Assume each chord roughly corresponds to one bar for now
+        import math, random
+        bars_per_cycle = max(1, len(base_predicted))
+        repeats_needed = max(1, math.ceil(total_bars / bars_per_cycle))
+
+        # Prepare section transpositions
+        # We will optionally transpose each section up or down by 2 semitones
+        section_transpositions = []
+        for s in range(max(1, num_sections)):
+            if random.random() < max(0.0, min(1.0, modulation_prob)):
+                section_transpositions.append(random.choice([-2, 2, 5, -5]))
+            else:
+                section_transpositions.append(0)
+
+        full_note_indices = []
+        section_len_cycles = max(1, repeats_needed // max(1, num_sections))
+        remaining_cycles = repeats_needed
+        section_idx = 0
+        while remaining_cycles > 0:
+            cycles_this_section = min(section_len_cycles, remaining_cycles)
+            transpose_semitones = section_transpositions[min(section_idx, len(section_transpositions)-1)]
+            for _ in range(cycles_this_section):
+                # Append transposed copy of base_predicted
+                for idx in base_predicted:
+                    # idx_to_note maps idx -> note name (e.g., 'C4'); we transpose after converting to pitch
+                    full_note_indices.append((idx, transpose_semitones))
+            remaining_cycles -= cycles_this_section
+            section_idx += 1
+
         # Convert to MIDI
         midi = pretty_midi.PrettyMIDI()
-        instrument = pretty_midi.Instrument(program=0)  # Grand Piano
+        gm_program_map = {
+            'piano': 0,
+            'acoustic': 24,
+            'violin': 40,
+            'flute': 73,
+            'synth': 88,
+        }
+        program_num = gm_program_map.get(instrument_req, 0)
+        instrument = pretty_midi.Instrument(program=program_num)
         
+        # Map to note names, apply transposition, and write
+        predicted_note_names = []
         time = 0.0
-        for note_num in predicted_notes:
+        for idx, transpose in full_note_indices:
+            note_name = idx_to_note.get(idx, 'C4')
+            try:
+                pitch = pretty_midi.note_name_to_number(note_name)
+            except Exception:
+                pitch = 60
+            pitch = max(0, min(127, pitch + int(transpose)))
+            # Update note_name for UI from pitch (normalize to closest name)
+            try:
+                ui_note_name = pretty_midi.note_number_to_name(pitch)
+            except Exception:
+                ui_note_name = note_name
+            predicted_note_names.append(ui_note_name)
             note = pretty_midi.Note(
                 velocity=100,
-                pitch=note_num,
+                pitch=pitch,
                 start=time,
                 end=time + duration_per_chord
             )
@@ -142,8 +198,12 @@ def generate_melody():
         return jsonify({
             'success': True,
             'file_id': file_id,
-            'notes': [idx_to_note.get(idx, f"MIDI:{idx}") for idx in predicted_notes],
-            'duration': duration_per_chord
+            'notes': predicted_note_names,
+            'duration': duration_per_chord,
+            'instrument': instrument_req,
+            'total_bars': total_bars,
+            'num_sections': num_sections,
+            'modulation_prob': modulation_prob
         })
         
     except Exception as e:
@@ -460,11 +520,6 @@ def generate_music_theory_analysis(melody_notes, selected_chords, duration):
         <p style=\"color: #dc3545;\">⚠️ Error generating analysis: {message}</p>
         <p>Please try again after checking your API key and internet connection.</p>
         """
-
-
-
-
-
 
 
 if __name__ == '__main__':

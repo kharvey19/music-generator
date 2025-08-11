@@ -630,7 +630,8 @@
         .chat-input-row { display: flex; gap: 8px; }
         .chat-input-row input { flex: 1; padding: 10px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: #0a0a0a; color: #fff; }
         .chat-input-row button { padding: 10px 16px; }
-        .suggestion-actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+        .suggestion-actions { margin-top: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+        .suggestion-chips { display: flex; flex-wrap: wrap; gap: 8px; }
         .chip { padding: 6px 10px; border-radius: 16px; background: #1a1a1a; border: 1px solid rgba(255,255,255,0.15); color: #fff; cursor: pointer; font-size: 0.9rem; }
         .chip:hover { background: #2a2a2a; }
 
@@ -818,6 +819,23 @@
                     </div>
                 </div>
                 
+                <div class="section">
+                    <h3>Structure</h3>
+                    <div class="duration-control" style="flex-wrap: wrap; gap: 20px;">
+                        <label for="totalBars">Total bars:</label>
+                        <input type="number" id="totalBars" value="8" min="1" max="128" step="1">
+
+                        <label for="numSections">Number of sections:</label>
+                        <input type="number" id="numSections" value="2" min="1" max="16" step="1">
+
+                        <div class="setting-group">
+                            <label for="modProbSlider">Modulation probability:</label>
+                            <input type="range" id="modProbSlider" min="0" max="1" step="0.1" value="0">
+                            <input type="number" id="modProbValue" min="0" max="1" step="0.1" value="0">
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="controls">
                     <button class="btn btn-primary" id="generateBtn">Generate Melody</button>
                 </div>
@@ -868,8 +886,8 @@
                             
                             <div class="setting-group">
                                 <label for="volumeSlider">Volume:</label>
-                                <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="0.7">
-                                <input type="number" id="volumeValue" min="0" max="1" step="0.1" value="0.7">
+                                <input type="range" id="volumeSlider" min="0" max="1" step="0.05" value="0.85">
+                                <input type="number" id="volumeValue" min="0" max="1" step="0.05" value="0.85">
                             </div>
                         </div>
                         
@@ -910,6 +928,7 @@
         let currentSynth = null;
         let reverb = null;
         let masterVolume = null;
+        let toneEQ = null;
         let chatHistory = [];
         let totalDurationSec = 0;
         let playbackAnimationId = null;
@@ -1033,6 +1052,9 @@
             // Audio control event listeners
             setupAudioControls();
 
+            // Structure controls
+            setupStructureControls();
+
             // Sheet music controls
             document.getElementById('toggleSheetBtn').onclick = toggleSheetMusic;
             document.getElementById('downloadSheetBtn').onclick = downloadSheetImage;
@@ -1042,7 +1064,9 @@
             // Instrument selector
             document.getElementById('instrumentSelect').addEventListener('change', function() {
                 if (currentSynth) {
-                    currentSynth.disconnect();
+                    try { currentSynth.stop && currentSynth.stop(); } catch (e) {}
+                    try { currentSynth.dispose && currentSynth.dispose(); } catch (e) { try { currentSynth.disconnect && currentSynth.disconnect(); } catch (e2) {} }
+                    currentSynth = null;
                 }
                 createInstrument(this.value);
             });
@@ -1072,16 +1096,35 @@
             volumeSlider.addEventListener('input', function() {
                 volumeValue.value = this.value;
                 if (masterVolume) {
-                    masterVolume.volume.value = Tone.gainToDb(this.value);
+                    const gain = Math.max(0.001, Math.min(1, parseFloat(this.value)));
+                    const db = Tone.gainToDb(gain);
+                    masterVolume.volume.value = Math.max(-24, Math.min(0, db));
                 }
             });
             
             volumeValue.addEventListener('input', function() {
                 volumeSlider.value = this.value;
                 if (masterVolume) {
-                    masterVolume.volume.value = Tone.gainToDb(this.value);
+                    const gain = Math.max(0.001, Math.min(1, parseFloat(this.value)));
+                    const db = Tone.gainToDb(gain);
+                    masterVolume.volume.value = Math.max(-24, Math.min(0, db));
                 }
             });
+        }
+
+        function setupStructureControls() {
+            const modProbSlider = document.getElementById('modProbSlider');
+            const modProbValue = document.getElementById('modProbValue');
+            if (modProbSlider && modProbValue) {
+                modProbSlider.addEventListener('input', function() {
+                    modProbValue.value = this.value;
+                });
+                modProbValue.addEventListener('input', function() {
+                    const v = Math.max(0, Math.min(1, parseFloat(this.value || '0')));
+                    this.value = isNaN(v) ? 0 : v;
+                    modProbSlider.value = this.value;
+                });
+            }
         }
 
         function generateMelody() {
@@ -1091,6 +1134,12 @@
             }
 
             const duration = parseFloat(document.getElementById('duration').value);
+            const totalBarsEl = document.getElementById('totalBars');
+            const numSectionsEl = document.getElementById('numSections');
+            const modProbEl = document.getElementById('modProbValue');
+            const totalBars = totalBarsEl ? parseInt(totalBarsEl.value || '8', 10) : 8;
+            const numSections = numSectionsEl ? parseInt(numSectionsEl.value || '2', 10) : 2;
+            const modulationProb = modProbEl ? parseFloat(modProbEl.value || '0') : 0;
             
             showLoading(true);
             showStatus('', '');
@@ -1102,7 +1151,11 @@
                 },
                 body: JSON.stringify({
                     chords: selectedChords,
-                    duration: duration
+                    duration: duration,
+                    instrument: document.getElementById('instrumentSelect').value,
+                    total_bars: totalBars,
+                    num_sections: numSections,
+                    modulation_prob: modulationProb
                 })
             })
             .then(response => response.json())
@@ -1214,9 +1267,26 @@
                     started = true;
                 }
                 
-                // Stop any currently playing audio
+                // Stop and reset transport; clear any scheduled events
                 Tone.Transport.stop();
                 Tone.Transport.seconds = 0;
+                Tone.Transport.cancel();
+
+                // Dispose any existing scheduled part to avoid duplicates
+                if (midiPart) {
+                    try { midiPart.stop(); } catch (e) {}
+                    try { midiPart.dispose(); } catch (e) {}
+                    midiPart = null;
+                }
+
+                // Ensure instrument exists and is fully loaded (for Sampler)
+                if (!currentSynth) {
+                    const instrumentType = document.getElementById('instrumentSelect').value;
+                    createInstrument(instrumentType);
+                }
+                if (currentSynth && currentSynth.loaded && typeof currentSynth.loaded.then === 'function') {
+                    await currentSynth.loaded;
+                }
                 
                 // Load and schedule the MIDI
                 await loadAndScheduleMIDI();
@@ -1261,13 +1331,20 @@
             
             // Create audio effects
             if (!reverb) {
-                reverb = new Tone.Reverb(2.0).toDestination();
+                reverb = new Tone.Reverb(1.5);
                 reverb.wet.value = parseFloat(document.getElementById('reverbSlider').value);
             }
             
             if (!masterVolume) {
                 masterVolume = new Tone.Volume().toDestination();
-                masterVolume.volume.value = Tone.gainToDb(parseFloat(document.getElementById('volumeSlider').value));
+                const gain = Math.max(0.001, Math.min(1, parseFloat(document.getElementById('volumeSlider').value)));
+                const db = Tone.gainToDb(gain);
+                masterVolume.volume.value = Math.max(-24, Math.min(0, db));
+            }
+
+            if (!toneEQ) {
+                // Low-shelf slight cut, mid gentle, high-shelf slight cut
+                toneEQ = new Tone.EQ3({ low: -3, mid: 0, high: -2 });
             }
             
             // Create instrument based on selection
@@ -1281,65 +1358,75 @@
                         },
                         baseUrl: "https://tonejs.github.io/audio/salamander/",
                         onload: () => console.log('Piano loaded')
-                    }).chain(reverb, masterVolume);
+                    });
                     break;
-                    
+                
                 case 'acoustic':
-                    currentSynth = new Tone.PolySynth(Tone.Synth, {
-                        oscillator: {
-                            type: "triangle"
-                        },
-                        envelope: {
-                            attack: 0.1,
-                            decay: 0.3,
-                            sustain: 0.4,
-                            release: 1.0
-                        }
-                    }).chain(reverb, masterVolume);
+                    if (Tone.PluckSynth) {
+                        currentSynth = new Tone.PluckSynth({
+                            attackNoise: 1,
+                            dampening: 2200,
+                            resonance: 0.95
+                        });
+                    } else {
+                        currentSynth = new Tone.PolySynth(Tone.Synth, {
+                            oscillator: { type: "triangle" },
+                            envelope: { attack: 0.005, decay: 0.18, sustain: 0.3, release: 0.3 }
+                        });
+                    }
                     break;
-                    
+                
                 case 'violin':
                     currentSynth = new Tone.PolySynth(Tone.Synth, {
                         oscillator: {
                             type: "sine"
                         },
                         envelope: {
-                            attack: 0.2,
+                            attack: 0.06,
                             decay: 0.1,
-                            sustain: 0.8,
-                            release: 1.5
+                            sustain: 0.75,
+                            release: 1.2
                         }
-                    }).chain(reverb, masterVolume);
+                    });
                     break;
-                    
+                
                 case 'flute':
                     currentSynth = new Tone.PolySynth(Tone.Synth, {
                         oscillator: {
                             type: "sine"
                         },
                         envelope: {
-                            attack: 0.1,
-                            decay: 0.2,
-                            sustain: 0.9,
-                            release: 2.0
+                            attack: 0.03,
+                            decay: 0.12,
+                            sustain: 0.85,
+                            release: 1.6
                         }
-                    }).chain(reverb, masterVolume);
+                    });
                     break;
-                    
-                case 'synth':
+                
                 default:
                     currentSynth = new Tone.PolySynth(Tone.Synth, {
                         oscillator: {
                             type: "triangle"
                         },
                         envelope: {
-                            attack: 0.1,
-                            decay: 0.2,
+                            attack: 0.01,
+                            decay: 0.15,
                             sustain: 0.6,
-                            release: 0.8
+                            release: 0.7
                         }
-                    }).chain(reverb, masterVolume);
+                    });
                     break;
+            }
+
+            // Ensure routing: instrument -> reverb -> masterVolume -> destination
+            try { currentSynth.disconnect(); } catch (e) {}
+            if (reverb && masterVolume && toneEQ) {
+                currentSynth.chain(toneEQ, reverb, masterVolume);
+            } else if (masterVolume) {
+                currentSynth.connect(masterVolume);
+            } else {
+                currentSynth.toDestination();
             }
         }
 
@@ -1375,7 +1462,13 @@
                 
                 // Create and schedule the part
                 midiPart = new Tone.Part((time, value) => {
-                    currentSynth.triggerAttackRelease(value.note, value.duration, time, value.velocity);
+                    const vel = Math.max(0.05, Math.min(1, value.velocity || 0.8));
+                    if (typeof currentSynth.triggerAttackRelease === 'function') {
+                        currentSynth.triggerAttackRelease(value.note, value.duration, time, vel);
+                    } else if (typeof currentSynth.triggerAttack === 'function') {
+                        currentSynth.triggerAttack(value.note, time, vel);
+                        currentSynth.triggerRelease(value.note, time + value.duration);
+                    }
                 }, notes);
                 
                 midiPart.start(0);
@@ -1505,13 +1598,16 @@
                         chordsLine.forEach(c => addChord(c));
                     };
                     actions.appendChild(addAll);
+                    const chipsWrap = document.createElement('div');
+                    chipsWrap.className = 'suggestion-chips';
                     chordsLine.forEach(c => {
                         const chip = document.createElement('span');
                         chip.className = 'chip';
                         chip.textContent = c;
                         chip.onclick = () => addChord(c);
-                        actions.appendChild(chip);
+                        chipsWrap.appendChild(chip);
                     });
+                    actions.appendChild(chipsWrap);
                     box.appendChild(actions);
                     box.scrollTop = box.scrollHeight;
                 }
